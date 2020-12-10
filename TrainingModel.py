@@ -45,13 +45,13 @@ class TrainingModel:
     def generator_loss(self, generated):
         return self.loss_obj(tf.ones_like(generated), generated)
 
-    def calc_cycle_loss(self, real_image, cycled_image, LAMBDA):
+    def calc_cycle_loss(self, real_image, cycled_image):
         loss1 = tf.reduce_mean(tf.abs(real_image - cycled_image))
-        return LAMBDA * loss1
+        return self.LAMBDA * loss1
 
-    def identity_loss(self, real_image, same_image, LAMBDA):
+    def identity_loss(self, real_image, same_image):
         loss = tf.reduce_mean(tf.abs(real_image - same_image))
-        return LAMBDA * 0.5 * loss
+        return self.LAMBDA * 0.5 * loss
 
     @tf.function
     def discriminator_gradients(self, real_x, real_y):
@@ -104,11 +104,11 @@ class TrainingModel:
             gen_g_loss = self.generator_loss(disc_fake_y)
             gen_f_loss = self.generator_loss(disc_fake_x)
 
-            total_cycle_loss = self.calc_cycle_loss(real_x, cycled_x, self.LAMBDA) + self.calc_cycle_loss(real_y, cycled_y, self.LAMBDA)
+            total_cycle_loss = self.calc_cycle_loss(real_x, cycled_x) + self.calc_cycle_loss(real_y, cycled_y)
 
             # Total generator loss = adversarial loss + cycle loss
-            total_gen_g_loss = gen_g_loss + total_cycle_loss + self.identity_loss(real_y, same_y, self.LAMBDA)
-            total_gen_f_loss = gen_f_loss + total_cycle_loss + self.identity_loss(real_x, same_x, self.LAMBDA)
+            total_gen_g_loss = gen_g_loss + total_cycle_loss + self.identity_loss(real_y, same_y)
+            total_gen_f_loss = gen_f_loss + total_cycle_loss + self.identity_loss(real_x, same_x)
 
         # Calculate the gradients for generator and discriminator
         generator_g_gradients = tape.gradient(total_gen_g_loss,

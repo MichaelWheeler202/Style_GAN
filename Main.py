@@ -7,6 +7,7 @@ Sources: https://www.tensorflow.org/tutorials/generative/style_transfer      The
          https://towardsdatascience.com/introduction-to-u-net-and-res-net-for-image-segmentation-9afcb432ee2f      resnet and unet models
 
 TODO
+    Make datasets of different size "work"
 
 '''
 
@@ -17,36 +18,43 @@ import os
 import time
 import matplotlib.pyplot as plt
 from IPython.display import clear_output
+import math
+import tensorflow.keras.backend as K
 
-import HelperMethods as hm
+import HelperMethods
 import Networks as nn
 import TrainingModel as tm
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
-BATCH_SIZE = 2  # number of records being processed at a time
-LOGICAL_BATCHES = 6  # number of batches run before the system does a learning step
+BATCH_SIZE = 1  # number of records being processed at a time
+LOGICAL_BATCHES = 12  # number of batches run before the system does a learning step
 BUFFER_SIZE = 1000
 IMG_WIDTH = 256
 IMG_HEIGHT = 256
 OUTPUT_CHANNELS = 3
-LAMBDA = 10
-EPOCHS = 1000
+LAMBDA = 6
+EPOCHS = 500
 SAVE_OR_SHOW = 'save'
 VERBOSE_FOLDER = 'Z:\\workspace\\Python Projects\\NeuralNetworks\\GANs\\StyleGAN\\Verboseness\\'
 OUTPUT_FOLDER = 'Z:\\workspace\\Python Projects\\NeuralNetworks\\GANs\\StyleGAN\\output\\'
 DISCRIMINATOR_RATIO = 2
 
-GEN_LEARNING_RATES = 1e-7/(BATCH_SIZE * LOGICAL_BATCHES)
-DISC_LEARNING_RATES = 1e-7/(BATCH_SIZE * LOGICAL_BATCHES)
+GEN_LEARNING_RATES = 1e-4/LOGICAL_BATCHES
+DISC_LEARNING_RATES = 1e-4/LOGICAL_BATCHES
+DECAY_CONSTANT = 0.92
+EPOCHS_TO_DECAY = 5
+# DATA_DIR_1 = 'E:\\faces'
+# DATA_DIR_2 = 'E:\\\BobRossPaintings'
 
 DATA_DIR_1 = 'E:\\apples_bananas_oranges\\freshapples'
 DATA_DIR_2 = 'E:\\apples_bananas_oranges\\freshoranges'
+
 
 # Load Data Sets
 train_set_1 = tf.keras.preprocessing.image_dataset_from_directory(
   directory=DATA_DIR_1,
   seed=123,
-  image_size=(256, 256),
+  image_size=(IMG_WIDTH, IMG_HEIGHT),
   batch_size=BATCH_SIZE)
 
 test_set_1 = tf.keras.preprocessing.image_dataset_from_directory(
@@ -54,13 +62,13 @@ test_set_1 = tf.keras.preprocessing.image_dataset_from_directory(
   validation_split=0.1,
   subset="validation",
   seed=123,
-  image_size=(256, 256),
+  image_size=(IMG_WIDTH, IMG_HEIGHT),
   batch_size=BATCH_SIZE)
 
 train_set_2 = tf.keras.preprocessing.image_dataset_from_directory(
   directory=DATA_DIR_2,
   seed=123,
-  image_size=(256, 256),
+  image_size=(IMG_WIDTH, IMG_HEIGHT),
   batch_size=BATCH_SIZE)
 
 test_set_2 = tf.keras.preprocessing.image_dataset_from_directory(
@@ -68,10 +76,11 @@ test_set_2 = tf.keras.preprocessing.image_dataset_from_directory(
   validation_split=0.1,
   subset="validation",
   seed=123,
-  image_size=(256, 256),
+  image_size=(IMG_WIDTH, IMG_HEIGHT),
   batch_size=BATCH_SIZE)
 
 starting_epoch = 0
+hm = HelperMethods.HelperMethods(IMG_WIDTH, IMG_HEIGHT, BATCH_SIZE)
 variables = hm.load_vars()
 
 CONTINUE = ''
@@ -92,8 +101,6 @@ else:
 if not RESET:
     starting_epoch = int(variables['epoch'])
     print("epoch starting at : " + str(starting_epoch + 1))
-
-hm.set_height_and_width_and_batch(IMG_WIDTH, IMG_HEIGHT, BATCH_SIZE)
 
 train_set_1 = train_set_1.map(
     hm.preprocess_images_train, num_parallel_calls=AUTOTUNE
@@ -116,29 +123,29 @@ sample_image_1 = next(iter(train_set_1))
 sample_image_2 = next(iter(train_set_2))
 
 plt.subplot(121)
-plt.title('Horse')
+plt.title('Im 1')
 plt.imshow(sample_image_1[0] * 0.5 + 0.5)
 
 plt.subplot(122)
-plt.title('Horse with random jitter')
+plt.title('Im 1 with random jitter')
 plt.imshow(hm.random_jitter(sample_image_1[0]) * 0.5 + 0.5)
 
 plt.subplot(121)
-plt.title('Zebra')
+plt.title('Im 2')
 plt.imshow(sample_image_2[0] * 0.5 + 0.5)
 
 plt.subplot(122)
-plt.title('Zebra with random jitter')
+plt.title('Im 2 with random jitter')
 plt.imshow(hm.random_jitter(sample_image_2[0]) * 0.5 + 0.5)
 
-generator_g = nn.unet_generator(OUTPUT_CHANNELS)
-generator_f = nn.unet_generator(OUTPUT_CHANNELS)
+generator_g = nn.unet_generator(OUTPUT_CHANNELS, IMG_WIDTH, IMG_HEIGHT)
+generator_f = nn.unet_generator(OUTPUT_CHANNELS, IMG_WIDTH, IMG_HEIGHT)
 
-discriminator_x = nn.discriminator()
-discriminator_y = nn.discriminator()
+discriminator_x = nn.discriminator(IMG_WIDTH, IMG_HEIGHT)
+discriminator_y = nn.discriminator(IMG_WIDTH, IMG_HEIGHT)
 
-to_zebra = generator_g(sample_image_1)
-to_horse = generator_f(sample_image_2)
+to_im2 = generator_g(sample_image_1)
+to_im1 = generator_f(sample_image_2)
 plt.figure(figsize=(8, 8))
 contrast = 8
 
@@ -147,8 +154,8 @@ logdir = "logs\\cyclegan_{}".format(int(time.time()))
 TC = tf.keras.callbacks.TensorBoard(logdir)
 TC.set_model(model=generator_g)
 
-imgs = [sample_image_1, to_zebra, sample_image_2, to_horse]
-title = ['Horse', 'To Zebra', 'Zebra', 'To Horse']
+imgs = [sample_image_1, to_im2, sample_image_2, to_im1]
+title = ['Im 1', 'To Im 2', 'Im 2', 'To Im 1']
 
 for i in range(len(imgs)):
     plt.subplot(2, 2, i + 1)
@@ -173,11 +180,23 @@ plt.imshow(discriminator_x(sample_image_1)[0, ..., -1], cmap='RdBu_r')
 
 plt.savefig(VERBOSE_FOLDER + 'RealOrFake')
 
-generator_g_optimizer = tf.keras.optimizers.Adam(GEN_LEARNING_RATES, beta_1=0.5)
-generator_f_optimizer = tf.keras.optimizers.Adam(GEN_LEARNING_RATES, beta_1=0.5)
+decay_steps = math.ceil(min(len(train_set_1), len(train_set_2)) * EPOCHS_TO_DECAY/LOGICAL_BATCHES)
 
-discriminator_x_optimizer = tf.keras.optimizers.Adam(DISC_LEARNING_RATES, beta_1=0.5)
-discriminator_y_optimizer = tf.keras.optimizers.Adam(DISC_LEARNING_RATES, beta_1=0.5)
+gen_lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+    initial_learning_rate=GEN_LEARNING_RATES,
+    decay_steps=decay_steps,
+    decay_rate=DECAY_CONSTANT)
+
+disc_lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+    initial_learning_rate=DISC_LEARNING_RATES,
+    decay_steps=decay_steps,
+    decay_rate=DECAY_CONSTANT)
+
+generator_g_optimizer = tf.keras.optimizers.Adam(gen_lr_schedule, beta_1=0.5)
+generator_f_optimizer = tf.keras.optimizers.Adam(gen_lr_schedule, beta_1=0.5)
+
+discriminator_x_optimizer = tf.keras.optimizers.Adam(disc_lr_schedule, beta_1=0.5)
+discriminator_y_optimizer = tf.keras.optimizers.Adam(disc_lr_schedule, beta_1=0.5)
 
 checkpoint_path = "./checkpoints/train"
 
@@ -217,8 +236,8 @@ generator_g_gradients = None
 
 for epoch in range(starting_epoch, EPOCHS):
     start = time.time()
-
     n = 0
+
     for image_x, image_y in tf.data.Dataset.zip((train_set_1, train_set_2)):
 
         if n % 10 == 0:
@@ -226,44 +245,47 @@ for epoch in range(starting_epoch, EPOCHS):
         n += 1
 
         if n % LOGICAL_BATCHES == 0:
-            while len(discriminator_x_gradients) > 0:
-                training_model.apply_discriminator_gradients(dx=discriminator_x_gradients.pop(), dy=discriminator_y_gradients.pop())
-
-            while len(generator_f_gradients) > 0:
-                training_model.apply_generator_gradients(gf=generator_f_gradients.pop(), gg=generator_g_gradients.pop())
+            training_model.apply_discriminator_gradients(dx=discriminator_x_gradients, dy=discriminator_y_gradients)
+            training_model.apply_generator_gradients(gf=generator_f_gradients, gg=generator_g_gradients)
+            discriminator_x_gradients = None
+            discriminator_y_gradients = None
+            generator_f_gradients = None
+            generator_g_gradients = None
 
         for _ in range(DISCRIMINATOR_RATIO):
             d_gradients = training_model.discriminator_gradients(real_x=image_x,
                                                                  real_y=image_y
                                                                  )
 
-            # if discriminator_x_gradients is None:
-            #     discriminator_x_gradients = d_gradients[0]
-            # else:
-            #     discriminator_x_gradients = discriminator_x_gradients + d_gradients[0]
-            #
-            # if discriminator_y_gradients is None:
-            #     discriminator_y_gradients = d_gradients[1]
-            # else:
-            #     discriminator_y_gradients = discriminator_y_gradients + d_gradients[1]
+            if discriminator_x_gradients is None:
+                discriminator_x_gradients = d_gradients[0]
+            else:
+                discriminator_x_gradients = [(discriminator_x_gradients[idx] + d_gradients[0][idx]) for idx in range(len(discriminator_x_gradients))]
 
-            discriminator_x_gradients.append(d_gradients[0])
-            discriminator_y_gradients.append(d_gradients[1])
+            if discriminator_y_gradients is None:
+                discriminator_y_gradients = d_gradients[1]
+            else:
+                discriminator_y_gradients = [(discriminator_y_gradients[idx] + d_gradients[1][idx]) for idx in range(len(discriminator_y_gradients))]
 
         g_gradients = training_model.generator_gradients(real_x=image_x,
                                                          real_y=image_y
                                                          )
-        generator_f_gradients.append(g_gradients[0])
-        generator_g_gradients.append(g_gradients[1])
 
+        if generator_f_gradients is None:
+            generator_f_gradients = g_gradients[0]
+        else:
+            generator_f_gradients = [(generator_f_gradients[idx] + g_gradients[0][idx]) for idx in range(len(generator_f_gradients))]
 
-    # apply leftover gradients
-    while len(discriminator_x_gradients) > 0:
-        training_model.apply_discriminator_gradients(dx=discriminator_x_gradients.pop(),
-                                                     dy=discriminator_y_gradients.pop())
+        if generator_g_gradients is None:
+            generator_g_gradients = g_gradients[1]
+        else:
+            generator_g_gradients = [(generator_g_gradients[idx] + g_gradients[1][idx]) for idx in range(len(generator_g_gradients))]
 
-    while len(generator_f_gradients) > 0:
-        training_model.apply_generator_gradients(gf=generator_f_gradients.pop(), gg=generator_g_gradients.pop())
+    if discriminator_x_gradients is not None and discriminator_y_gradients is not None:
+        training_model.apply_discriminator_gradients(dx=discriminator_x_gradients, dy=discriminator_y_gradients)
+
+    if generator_f_gradients is not None and generator_g_gradients is not None:
+        training_model.apply_generator_gradients(gf=generator_f_gradients, gg=generator_g_gradients)
 
     clear_output(wait=True)
 
