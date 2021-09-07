@@ -124,3 +124,7 @@ class HelperMethods:
         with open('variables.xml', 'w') as f:
             f.write(xml_str)
 
+
+    def ada_image_mutation(self, img, mutation_probability):
+
+        return img

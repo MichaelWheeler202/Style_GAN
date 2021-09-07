@@ -6,49 +6,51 @@ Sources: https://www.tensorflow.org/tutorials/generative/style_transfer      The
 
          https://towardsdatascience.com/introduction-to-u-net-and-res-net-for-image-segmentation-9afcb432ee2f      resnet and unet models
 
-TODO
-    Make datasets of different size "work"
+         https://github.com/NVlabs/stylegan2-ada/tree/main/training NVidia Stylegan2-ADA repo
 
+TODO
+    Implement ADA training strategy
+    Implement Stylegan2 architecure
+    Make learning rate decay work with loaded epochs.
 '''
 
 import tensorflow as tf
-import tensorflow_datasets as tfds
 
-import os
 import time
 import matplotlib.pyplot as plt
 from IPython.display import clear_output
 import math
-import tensorflow.keras.backend as K
+from datetime import datetime
 
 import HelperMethods
 import Networks as nn
 import TrainingModel as tm
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
-BATCH_SIZE = 1  # number of records being processed at a time
-LOGICAL_BATCHES = 12  # number of batches run before the system does a learning step
+BATCH_SIZE = 2  # number of records being processed at a time
+LOGICAL_BATCHES = 4  # number of batches run before the system does a learning step
 BUFFER_SIZE = 1000
-IMG_WIDTH = 256
-IMG_HEIGHT = 256
+IMG_WIDTH = 128
+IMG_HEIGHT = 128
 OUTPUT_CHANNELS = 3
-LAMBDA = 6
+LAMBDA = 2
 EPOCHS = 500
 SAVE_OR_SHOW = 'save'
 VERBOSE_FOLDER = 'Z:\\workspace\\Python Projects\\NeuralNetworks\\GANs\\StyleGAN\\Verboseness\\'
 OUTPUT_FOLDER = 'Z:\\workspace\\Python Projects\\NeuralNetworks\\GANs\\StyleGAN\\output\\'
 DISCRIMINATOR_RATIO = 2
 
-GEN_LEARNING_RATES = 1e-4/LOGICAL_BATCHES
-DISC_LEARNING_RATES = 1e-4/LOGICAL_BATCHES
-DECAY_CONSTANT = 0.92
-EPOCHS_TO_DECAY = 5
+GEN_LEARNING_RATES = 1e-5/LOGICAL_BATCHES
+DISC_LEARNING_RATES = 1e-5/LOGICAL_BATCHES
+DECAY_CONSTANT = 0.95
+EPOCHS_TO_DECAY = 4
+SAVE_MODEL_FREQ = 25
+
 # DATA_DIR_1 = 'E:\\faces'
-# DATA_DIR_2 = 'E:\\\BobRossPaintings'
+# DATA_DIR_2 = 'E:\\PeopleArt-master\\JPEGImages\\Cubism'
 
-DATA_DIR_1 = 'E:\\apples_bananas_oranges\\freshapples'
-DATA_DIR_2 = 'E:\\apples_bananas_oranges\\freshoranges'
-
+DATA_DIR_1 = 'E:\\apples_bananas_oranges\\freshoranges'
+DATA_DIR_2 = 'E:\\apples_bananas_oranges\\freshapples'
 
 # Load Data Sets
 train_set_1 = tf.keras.preprocessing.image_dataset_from_directory(
@@ -78,6 +80,20 @@ test_set_2 = tf.keras.preprocessing.image_dataset_from_directory(
   seed=123,
   image_size=(IMG_WIDTH, IMG_HEIGHT),
   batch_size=BATCH_SIZE)
+
+
+# make test sets 1 and 2 match in length
+if len(train_set_2) < len(train_set_1):
+    original_train_set_2 = train_set_2
+    while len(train_set_2) < len(train_set_1):
+        train_set_2 = tf.data.Dataset.concatenate(train_set_2, original_train_set_2)
+    train_set_2 = train_set_2.take(len(train_set_1))
+
+else:
+    original_train_set_1 = train_set_1
+    while len(train_set_1) < len(train_set_2):
+        train_set_1 = tf.data.Dataset.concatenate(train_set_1, original_train_set_1)
+    train_set_1 = train_set_1.take(len(train_set_2))
 
 starting_epoch = 0
 hm = HelperMethods.HelperMethods(IMG_WIDTH, IMG_HEIGHT, BATCH_SIZE)
@@ -180,7 +196,7 @@ plt.imshow(discriminator_x(sample_image_1)[0, ..., -1], cmap='RdBu_r')
 
 plt.savefig(VERBOSE_FOLDER + 'RealOrFake')
 
-decay_steps = math.ceil(min(len(train_set_1), len(train_set_2)) * EPOCHS_TO_DECAY/LOGICAL_BATCHES)
+decay_steps = math.ceil(min(len(train_set_1), len(train_set_2)) * EPOCHS_TO_DECAY/(LOGICAL_BATCHES * BATCH_SIZE))
 
 gen_lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
     initial_learning_rate=GEN_LEARNING_RATES,
@@ -299,6 +315,13 @@ for epoch in range(starting_epoch, EPOCHS):
         print('Saving checkpoint for epoch {} at {}'.format(epoch + 1, ckpt_save_path))
         variables['epoch'] = str(epoch)
         hm.save_variables(variables)
+
+    if (epoch + 1)%SAVE_MODEL_FREQ == 0:
+        now = datetime.now()
+        dt_string = now.strftime("%Y_%m_%d__%H_%M_%S")
+        generator_g.save('models/generator_g' + dt_string + '.h5')
+        # generator_f.save('models/generator_f' + dt_string)
+
 
     print('Time taken for epoch {} is {} sec\n'.format(epoch + 1, time.time() - start))
 

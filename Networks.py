@@ -41,34 +41,18 @@ def upsample(filters, size, strides, apply_dropout=False):
 def unet_generator(OUTPUT_CHANNELS, IMG_WIDTH, IMG_HEIGHT):
     inputs = tf.keras.layers.Input(shape=[IMG_WIDTH,IMG_HEIGHT,3])
 
-    down_stack = [
-        downsample(64, 5, 1),
-        downsample(128, 3, 2),
-        downsample(128, 3, 2),
-        downsample(256, 3, 2),
-        downsample(256, 3, 1),
-        # downsample(256, 3, 1),
-    ]
-
-    up_stack = [
-        # upsample(256, 3, 1, apply_dropout=False),
-        upsample(256, 3, 1, apply_dropout=False),
-        upsample(256, 3, 2, apply_dropout=False),
-        upsample(128, 3, 2, apply_dropout=False),
-        upsample(128, 3, 2, apply_dropout=False),
-        upsample(64, 5, 1, apply_dropout=False),
-
-    ]
-
-    initializer = tf.random_normal_initializer(0., 0.02)
-    last = tf.keras.layers.Conv2DTranspose(OUTPUT_CHANNELS, 9,
-                                           strides=1,
-                                           padding='same',
-                                           kernel_initializer=initializer,
-                                           activation='tanh')
 
     x = inputs
-    x = downsample(64, 9, 1, apply_batchnorm=True)(x)
+    x = downsample(64, 12, 1, apply_batchnorm=True)(x)
+
+    down_stack = [
+        downsample(128, 8, 1),
+        downsample(128, 6, 2),
+        downsample(128, 4, 2),
+        downsample(128, 2, 2),
+        # downsample(256, 3, 1),
+        # downsample(256, 3, 1),
+    ]
 
     # Downsampling through the model
     skips = []
@@ -77,7 +61,24 @@ def unet_generator(OUTPUT_CHANNELS, IMG_WIDTH, IMG_HEIGHT):
         skips.append(x)
 
     skips = reversed(skips)  # Final down can't skip as node outputs must match for concat
-    x = upsample(256, 5, 1, apply_dropout=False)(x)  # at least 1 middle row to have matching output
+    x = upsample(128, 5, 1, apply_dropout=False)(x)  # at least 1 middle row to have matching output
+
+    up_stack = [
+        # upsample(256, 3, 1, apply_dropout=False),
+        # upsample(256, 3, 1, apply_dropout=False),
+        upsample(128, 2, 2, apply_dropout=True),
+        upsample(128, 4, 2, apply_dropout=True),
+        upsample(128, 6, 2, apply_dropout=False),
+        upsample(128, 8, 1, apply_dropout=False),
+
+    ]
+    x = downsample(64, 12, 1, apply_batchnorm=True)(x)
+    initializer = tf.random_normal_initializer(0., 0.02)
+    last = tf.keras.layers.Conv2DTranspose(OUTPUT_CHANNELS, 12,
+                                           strides=1,
+                                           padding='same',
+                                           kernel_initializer=initializer,
+                                           activation='tanh')
 
     # Upsampling and establishing the skip connections
     for up, skip in zip(up_stack, skips):
@@ -95,8 +96,8 @@ def discriminator(IMG_WIDTH, IMG_HEIGHT):
 
     inp = tf.keras.layers.Input(shape=[IMG_WIDTH, IMG_HEIGHT, 3], name='input_image')
 
-    down1 = downsample(64, 4, 2, False)(inp) # (bs, 128, 128, 64)
-    down2 = downsample(128, 4, 2)(down1) # (bs, 64, 64, 128)
+    down1 = downsample(64, 8, 2, False)(inp) # (bs, 128, 128, 64)
+    down2 = downsample(128, 6, 2)(down1) # (bs, 64, 64, 128)
     down3 = downsample(256, 4, 2)(down2) # (bs, 32, 32, 256)
 
     zero_pad1 = tf.keras.layers.ZeroPadding2D()(down3) # (bs, 34, 34, 256)
